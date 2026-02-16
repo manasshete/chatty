@@ -6,9 +6,9 @@ import User from "../models/User.js";
 // REGISTER
 export const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { fullName, email, password } = req.body;
 
-    if (!name || !email || !password)
+    if (!fullName || !email || !password)
       return res.status(400).json({ message: "All fields are required" });
 
     if (password.length < 6)
@@ -23,7 +23,7 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
-      name,
+      fullName,
       email: normalizedEmail,
       password: hashedPassword,
     });
@@ -66,7 +66,7 @@ export const login = async (req, res) => {
   }
 };
 
-// FORGOT PASSWORD (send reset token)
+// FORGOT PASSWORD
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -76,20 +76,16 @@ export const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
-
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = resetTokenExpiry;
+    // Generate hashed reset token
+    const resetToken = user.getResetPasswordToken();
     await user.save();
 
-    // TODO: Send email with resetToken link
+    // TODO: send resetToken via email
     // Example: `https://yourapp.com/reset-password/${resetToken}`
 
     res.status(200).json({
       message: "Password reset token generated. Check your email.",
-      resetToken, // remove in production
+      resetToken, // only for testing in Postman
     });
   } catch (error) {
     console.error("Forgot password error:", error);
@@ -105,9 +101,12 @@ export const resetPassword = async (req, res) => {
     if (!token || !newPassword)
       return res.status(400).json({ message: "Token and new password required" });
 
+    // Hash the token to match stored hashed token
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
     const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() },
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() },
     });
 
     if (!user) return res.status(400).json({ message: "Invalid or expired token" });
@@ -117,7 +116,7 @@ export const resetPassword = async (req, res) => {
 
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
+    user.resetPasswordExpire = undefined;
     await user.save();
 
     res.status(200).json({ message: "Password reset successful" });
