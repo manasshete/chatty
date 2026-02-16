@@ -41,3 +41,7 @@ coverage/
 # Optional (if using client later)
 client/node_modules/
 client/build/
+
+# Optional (if using server later)
+server/node_modules/
+server/build/
